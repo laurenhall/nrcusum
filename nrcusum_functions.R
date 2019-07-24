@@ -26,9 +26,10 @@ return(out)
 
 # A function to implement the corrected cusum.
 # Correction key:
-# "n" = no correction, "s" = simulate at lambda1, or a specified lambdat (if different from l1),
+# "n" = no correction, "s" = simulate at lambda1, or a specified lambdat (if different from lambda1),
 # "e" = estimate lambda from data, "b" = bootstrap.
 nrc.csave = function(cases, lambda0, lambda1, lambdat=NULL, nsim=499, sig=0.05, start=0, correction=c("n","s","e","b")){
+  if(length(correction) > 1 | !any(correction %in% c("n","s","e","b"))){correction = "n"}
   if(lambda0 == lambda1){k=0
   } else {
   k = (lambda1 - lambda0)/(log(lambda1) - log(lambda0))}
