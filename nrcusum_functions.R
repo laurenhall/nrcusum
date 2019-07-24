@@ -1,6 +1,17 @@
 # Libraries
 library(pbapply)
 
+# Define the CUSUM for a given k
+csm.s = function(cases, k, start=0){
+  ct = numeric(length(cases))
+  ct0 = start
+  for(i in seq_along(cases)){
+    ct0 = max(0, ct0 + cases[i] - k)
+    ct[i] = ct0
+  }
+  return(ct)
+}
+
 # A function to simulate under the alternative hypothesis.
 pickc = function(cases, dec, lambda1, lambdat, nsim, correction){
 if(correction == "s"){out = rpois(nsim, ifelse(is.null(lambdat), lambda1, lambdat))}
