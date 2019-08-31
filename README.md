@@ -8,7 +8,7 @@ Supporting materials for *A modified CUSUM test to control post-outbreak false a
 
 **nrcusum_correction_expanded.R** : An expanded version of `nrcusum_correction.R` which implements each correction separately rather than jointly, making it easier to explore the effects of individual corrections. 
 
-**germany_salmonella_example.R** : R code for main text data demonsration. Requires the functions from `nrcusum_functions.R` and the `surveillance` package, which includes the data. 
+**germany_salmonella_example.R** : R code for main text data demonstration. Requires the functions from `nrcusum_functions.R` and the `surveillance` package, which includes the data. 
 
 **simdata.rda** : The data sets simulated by `nrcsum_correction.R`. 
 
