@@ -1,6 +1,8 @@
-#####################################
-# NRCUSUM Correction Code           #
-#####################################
+###########################################################
+# NRCUSUM Correction Code - Expanded Version              #
+# Analyses are separated for easier exploration of 		  #
+# individual sets of tests, if desired. 				  #
+########################################################### 
 source("nrcusum_functions.R")
 
 # Set the values for Lambda[0], Lambda[1], and the true Lambda[a].
@@ -22,44 +24,93 @@ simpois = lapply(seq_len(nsets), function(x) rpois(length(outbreak), ifelse(outb
 # These apply the given correction to the simulated data. #
 ###########################################################
 
-# A total of five tests are performed: 
 # (1) No correction - Lambda[1] to detect = 7.5
+set.seed(1)
+out_n = pblapply(simpois, FUN = function(x) csm_corrected(x, lambda0, lambda1, correction="n"))
+dec_n = sapply(out_n, getElement, "decision")
+pv_n = sapply(out_n, getElement, "pvalue")
+
 # (2) Correction simulating at the known Lambda[a] value
+set.seed(6)
+out_a = pblapply(simpois, FUN = function(x) csm_corrected(x, lambda0, lambda1, lambdasim=lambdaa, correction="s"))
+dec_a = sapply(out_a, getElement, "decision")
+pv_a = sapply(out_a, getElement, "pvalue")
+
 # (3) Correction simulating at Lambda[1]
+set.seed(4)
+out_s = pblapply(simpois, FUN = function(x) csm_corrected(x, lambda0, lambda1, correction="s"))
+dec_s = sapply(out_s, getElement, "decision")
+pv_s = sapply(out_s, getElement, "pvalue")
+
 # (4) Correction where Lambda is estimated from the mean of outbreak time periods
+set.seed(1)
+out_e = pblapply(simpois, FUN = function(x) csm_corrected(x, lambda0, lambda1, correction="e"))
+dec_e = sapply(out_e, getElement, "decision")
+pv_e = sapply(out_e, getElement, "pvalue")
+
 # (5) Correction with bootstrapped samples
+set.seed(3)
+out_b = pblapply(simpois, FUN = function(x) csm_corrected(x, lambda0, lambda1, correction="b"))
+dec_b = sapply(out_b, getElement, "decision")
+pv_b = sapply(out_b, getElement, "pvalue")
 
-corrections = c("n","s","s","e","b")
-lambdas = rep(lambda1, 5); lambdas[2] = lambdaa
-seeds = c(12, 6, 4, 1, 3)
-labs = corrections; labs[2] = "a"
-index = rep(c(0,1,2), times=c(50,25,50))
+#######################################################################
+# CUSUM Correction Results                                            #
+# This generates a text file with the mean alarm rate before, during, #
+# and after the simulated outbreak for each method.                   #
+#######################################################################
 
-# Apply the uncorrected and corrected tests to the simulated data  
-test_out = lapply(seq_along(corrections), function(i){
-	set.seed(seeds[i])
-	pblapply(simpois, FUN = function(x) csm_corrected(x, lambda0, lambda1, lambdasim = lambdas[i], correction=corrections[i]))
-	})
-names(test_out) = labs 
+sink(file="nrcusum_correction_test.txt")
+cat("Results of simulated tests - The numbers below represent the following: \n 1: Pre-outbreak false alarm rate \n 2: Power during outbreak \n 3: Post-outbreak false alarm rate \n \n")
+cat("No Correction \n")
+mean(dec_n[1:50,]) # Pre-outbreak false positives
+mean(dec_n[51:75,]) # power during outbreak
+mean(dec_n[76:125,]) # post outbreak false alarm rate
+cat("\n")
+cat("Select Lambda - Lambda[a] \n")
+mean(dec_a[1:50,]) # Pre-outbreak false positives
+mean(dec_a[51:75,]) # power during outbreak
+mean(dec_a[76:125,]) # post outbreak false alarm rate
+cat("\n")
+cat("Select Lambda - Lambda[1] \n")
+mean(dec_s[1:50,]) # Pre-outbreak false positives
+mean(dec_s[51:75,]) # power during outbreak
+mean(dec_s[76:125,]) # post outbreak false alarm rate
+cat("\n")
+cat("Estimate Lambda \n")
+mean(dec_e[1:50,]) # Pre-outbreak false positives
+mean(dec_e[51:75,]) # power during outbreak
+mean(dec_e[76:125,]) # post outbreak false alarm rate
+cat("\n")
+cat("Bootstrap \n")
+mean(dec_b[1:50,]) # Pre-outbreak false positives
+mean(dec_b[51:75,]) # power during outbreak
+mean(dec_b[76:125,]) # post outbreak false alarm rate
+cat("\n")
+sink()
 
-# Calculate the AUC-ROC for the trade-off between true positive rate and post-outbreak false positive rate 
+###############################################
+# AUC - Calculate the AUC-ROC for the         #
+# trade-off between TPR and post-outbreak FPR #
+###############################################
+index = 51:125
+truth_auc = outbreak[index]
+# Remove the pre-outbreak time periods from the p-value data 
+pvn_auc = pv_n[index,]
+pva_auc = pv_a[index,]
+pvs_auc = pv_s[index,]
+pve_auc = pv_e[index,]
+pvb_auc = pv_b[index,]
 
-auc_out = sapply(test_out, function(x){
-	tmp = sapply(x, getElement, "pvalue")[index > 0,]
-	apply(tmp, 2, function(p) auc(roc(outbreak[index > 0], p, quiet=T)))
-})
+# Compute the AUC for each simulated data set 
+auc_n = apply(pvn_auc, 2, function(x) auc(roc(truth_auc, x, quiet=TRUE)))
+auc_a = apply(pva_auc, 2, function(x) auc(roc(truth_auc, x, quiet=TRUE)))
+auc_s = apply(pvs_auc, 2, function(x) auc(roc(truth_auc, x, quiet=TRUE)))
+auc_e = apply(pve_auc, 2, function(x) auc(roc(truth_auc, x, quiet=TRUE)))
+auc_b = apply(pvb_auc, 2, function(x) auc(roc(truth_auc, x, quiet=TRUE)))
 
-# Generate the table of test results 
-test_results = matrix(nrow=5, ncol=4, dimnames= list(c("No Correction","Lambda[a]","Lambda[1]", "Estimation","Bootstrap"), c("Pre-Outbreak","Outbreak","Post-Outbreak","AUC")))
-test_results[,4] = colMeans(auc_out)
-
-for(i in seq_along(test_out)){
-	tmp = sapply(test_out[[i]], getElement, "decision")
-	test_results[i,-4] = tapply(tmp, matrix(index, 125, 100), mean)
-}
-
-print(test_results, digits=3)
-
+# Compute the mean AUC 
+mean(auc_n); mean(auc_a); mean(auc_s); mean(auc_e); mean(auc_b)
 
 ##########################################
 # Figures - Code to generate the figures #
@@ -71,7 +122,7 @@ print(test_results, digits=3)
 # This sample data was generated with    #
 # Lambda[0] = 4 and Lambda[1] = 6.       #
 ##########################################
-load(example.rda)
+load("cusum_example.rda")
 
 runs = cut(x, c(0, which(stat > h), 100))
 spx = split(x, runs)
@@ -109,7 +160,7 @@ dev.off()
 # Figure 3-A, No Correction 
 setEPS()
 postscript(file="Fig3a.eps", width=5, height=5)
-out = test_out$n[[pick]]
+out = out_nc[[pick]]
 plot(1:125, out$stat, xlab="Time", ylab="CUSUM",
      main=expression(paste("(a) No Correction:   ", lambda[1], " to Detect = 7.5,   ", italic(k), " = 6.17")),
      type="n", yaxs="i", ylim=c(-1, 130))
@@ -126,7 +177,7 @@ dev.off()
 # Figure 3-B, Lambda[a]
 setEPS()
 postscript(file="Fig3b.eps", width=5, height=5)
-out = test_out$a[[pick]]
+out = out_a[[pick]]
 plot(1:125, out$stat, xlab="Time", ylab="CUSUM",
      main=expression(paste("(b) Simulation Correction with ", lambda[a], " = 10")),
      type="n", yaxs="i", ylim=c(-1, 130))
@@ -142,7 +193,7 @@ dev.off()
 # Figure 3-C, Lambda[1]
 setEPS()
 postscript(file="Fig3c.eps", width=5, height=5)
-out = test_out$s[[pick]]
+out = out_s[[pick]]
 plot(1:125, out$stat, xlab="Time", ylab="CUSUM",
      main=expression(paste("(c) Simulation Correction with ", lambda[a], " = ", lambda[1])),
      type="n", yaxs="i", ylim=c(-1, 130))
@@ -158,7 +209,7 @@ dev.off()
 #Figure 3-D, Lambda estimated from the data 
 setEPS()
 postscript(file="Fig3d.eps", width=5, height=5)
-out = test_out$e[[pick]]
+out = out_e[[pick]]
 plot(1:125, out$stat, xlab="Time", ylab="CUSUM",
      main=expression(paste("(d) Simulation Correction with ", lambda[a], " = ", hat(lambda)[m])),
      type="n", yaxs="i", ylim=c(-1, 130))
@@ -174,7 +225,7 @@ dev.off()
 # Figure 3-E, Bootstrap
 setEPS()
 postscript(file="Fig3e.eps", width=5, height=5)
-out = test_out$b[[pick]]
+out = out_b[[pick]]
 plot(1:125, out$stat, xlab="Time", ylab="CUSUM",
      main=expression(paste("(e) Simulation Correction with Bootstrap")),
      type="n", yaxs="i", ylim=c(-1, 130))
@@ -192,30 +243,26 @@ dev.off()
 ####################################
 # NOTE: The version of Figure 4 which appears in the manuscript incorrectly shows the ROC curves for data set number 75 rather than data set 27. Code to generate both the original figure and the correct figure appear below. 
 
-# Order to draw the lines to maximize visibility 
-ord = c(2,5,4,3,1)
-cols = c("#777777","#f4a582","#ca0020","#0571b0","#92c5de")
-ltys = c(1, 4, 3, 3, 5)
-types = c("l","l","l","o","l")
-
 # Original Figure - Data set 75
 setEPS()
 postscript(file="Fig4.eps", width=5, height=5)
-plot(roc(outbreak[index > 0], test_out[[2]][[75]]$pvalue[index > 0], quiet=TRUE), ylab="True Positive Rate", xlab="False Positive Rate", col=cols[2], lty=ltys[2], identity.lty = 2, legacy.axes=TRUE)
-for(i in ord[-1]){
-	plot(roc(outbreak[index > 0], test_out[[i]][[75]]$pvalue[index > 0], quiet=TRUE), col=cols[i], lty=ltys[i], type=types[i], pch=20, add=TRUE)
-}
-legend("bottomright", col=cols, lty=ltys, lwd=2, pch=c(NA,NA,NA,20,NA), pt.cex=0.8, legend=c("Uncorrected", expression(lambda[a]), expression(lambda[1]), expression(hat(lambda)[m]), "Bootstrap"))
+plot(roc(truth_auc, pv_a[51:125, 75], quiet=TRUE), legacy.axes=T, ylab="True Positive Rate", xlab = "False Positive Rate", col="#f4a582", lty=4, identity.lty=2)
+plot(roc(truth_auc, pv_b[51:125, 75], quiet=TRUE), col="#92c5de", lty=5, add=TRUE)
+plot(roc(truth_auc, pv_e[51:125, 75], quiet=TRUE), col="#0571b0", lty=3, type="o", pch=20, cex=0.5, add=TRUE)
+plot(roc(truth_auc, pv_s[51:125, 75], quiet=TRUE), col="#ca0020", lty=3, add=TRUE)
+plot(roc(truth_auc, pv_n[51:125, 75], quiet=TRUE), col="#777777", add=TRUE)
+legend("bottomright", col=c("#777777","#f4a582","#ca0020","#0571b0","#92c5de"), lty=c(1,4,3,3,5), lwd=2, pch=c(NA,NA,NA,20,NA), pt.cex=0.8, legend=c("Uncorrected", expression(lambda[a]), expression(lambda[1]), expression(hat(lambda)[m]), "Bootstrap"))
 dev.off()
 
 # Correct Figure - Data set 27
 setEPS()
 postscript(file="Fig4_Corrected.eps", width=5, height=5)
-plot(roc(outbreak[index > 0], test_out[[2]][[27]]$pvalue[index > 0], quiet=TRUE), ylab="True Positive Rate", xlab="False Positive Rate", col=cols[2], lty=ltys[2], identity.lty = 2, legacy.axes=TRUE)
-for(i in ord[-1]){
-	plot(roc(outbreak[index > 0], test_out[[i]][[27]]$pvalue[index > 0], quiet=TRUE), col=cols[i], lty=ltys[i], type=types[i], pch=20, add=TRUE)
-}
-legend("bottomright", col=cols, lty=ltys, lwd=2, pch=c(NA,NA,NA,20,NA), pt.cex=0.8, legend=c("Uncorrected", expression(lambda[a]), expression(lambda[1]), expression(hat(lambda)[m]), "Bootstrap"))
+plot(roc(truth_auc, pv_a[51:125, pick], quiet=TRUE), legacy.axes=T, ylab="True Positive Rate", xlab = "False Positive Rate", col="#f4a582", lty=4, identity.lty=2)
+plot(roc(truth_auc, pv_b[51:125, pick], quiet=TRUE), col="#92c5de", lty=5, add=TRUE)
+plot(roc(truth_auc, pv_e[51:125, pick], quiet=TRUE), col="#0571b0", lty=3, type="o", pch=20, cex=0.5, add=TRUE)
+plot(roc(truth_auc, pv_s[51:125, pick], quiet=TRUE), col="#ca0020", lty=3, add=TRUE)
+plot(roc(truth_auc, pv_n[51:125, pick], quiet=TRUE), col="#777777", add=TRUE)
+legend("bottomright", col=c("#777777","#f4a582","#ca0020","#0571b0","#92c5de"), lty=c(1,4,3,3,5), lwd=2, pch=c(NA,NA,NA,20,NA), pt.cex=0.8, legend=c("Uncorrected", expression(lambda[a]), expression(lambda[1]), expression(hat(lambda)[m]), "Bootstrap"))
 dev.off()
 
 ##################################################
